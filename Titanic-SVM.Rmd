@@ -1,0 +1,159 @@
+---
+title: "Titanic - SVM Linear and Kernel"
+author: "VB"
+date: "October 16, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+#### Load Packages 
+* e1071 package - Needed to build support vector machine classifier
+* mice - To impute missing values
+* caTools - To build training and test sets
+* caret - To validate the model using k-fold cross validation
+```{r warning=FALSE, message=FALSE}
+library(e1071)
+library(mice)
+library(caTools)
+library(caret)
+```
+```{r}
+setwd('D:\\Venkat\\Villanova\\Data Scicence Projects\\Titanic')
+```
+Load data -
+```{r}
+full_dataset = read.csv('train.csv')
+```
+Reorder the features to align with test data feature sequence
+```{r results='hide'}
+full_dataset = full_dataset[c(1,3,4,5,6,7,8,9,10,11,12,2)]
+```
+Pick the features of interest
+```{r}
+features = c(2,4,5,6,7,9,12)
+dataset = full_dataset[,features]
+```
+###Data Analysis
+Determine the modeling type of features
+```{r}
+str(dataset)
+dataset$Pclass = factor(x = dataset$Pclass,
+                        levels = c(3,2,1),
+                        labels = c(3,2,1),
+                        ordered = TRUE)
+dataset$Sex = factor(x = dataset$Sex,
+                     levels = c('female','male'),
+                     labels = c(1,2))
+dataset$Survived = factor(x = dataset$Survived,
+                          levels = c(0,1),
+                          labels = c(0,1))
+dataset$SibSp = factor(x = dataset$SibSp,
+                       levels = c(1,2,3,4,5,6,7),
+                       labels = c(1,2,3,4,5,6,7),
+                       ordered = TRUE)
+dataset$Parch = factor(x = dataset$Parch,
+                       levels = c(1,2,3,4,5,6,7),
+                       labels = c(1,2,3,4,5,6,7),
+                       ordered = TRUE)
+```
+Are there any missing values?
+```{r}
+md.pattern(dataset)
+```
+Age is missing in 177 observations. So lets impute the missing values
+```{r}
+impute_dataset = mice(data = dataset,
+                      m=1,
+                      maxit = 5)
+imputed_dataset = complete(impute_dataset,1)
+```
+Scale all continuous variables
+```{r}
+imputed_dataset$Fare = scale(imputed_dataset$Fare)
+imputed_dataset$Age = scale(imputed_dataset$Age)
+```
+Separate the dataset in training and set set
+```{r}
+set.seed(5)
+split = sample.split(Y = imputed_dataset$Survived,
+                     SplitRatio = 0.8)
+training_set = subset(imputed_dataset,
+                      split == TRUE)
+test_set = subset(imputed_dataset,
+                  split == FALSE)
+```
+Build the Linear and Kernel SVM classifier -
+```{r}
+svmlinear_classifier = svm(formula = Survived ~ .,
+                           data = training_set,
+                           type = 'C-classification',
+                           kernel = 'linear')
+svmkernel_classifier = svm(formula = Survived ~ .,
+                           data = training_set,
+                           type = 'C-classification',
+                           kernel = 'radial')
+```
+Predict the test set using both the Linear and Kernel classifier
+```{r}
+svmlinear_y_pred = predict(svmlinear_classifier,
+                         newdata = test_set[,-7])
+svmkernel_y_pred = predict(svmkernel_classifier,
+                         newdata = test_set[,-7])
+```
+Build the confusion matrix and calculate the misclassification rates for both linear and kernel SVM
+```{r}
+svmlinear_cm = table(test_set$Survived, 
+                     svmlinear_y_pred)
+svmkernel_cm = table(test_set$Survived,
+                     svmkernel_y_pred)
+svmlinear_misclaassification = (svmlinear_cm[2,1]+svmlinear_cm[1,2])/(svmlinear_cm[1,1]+svmlinear_cm[1,2]+svmlinear_cm[2,1]+svmlinear_cm[2,2])
+svmkernel_misclassification = (svmkernel_cm[2,1]+svmkernel_cm[1,2])/(svmkernel_cm[1,1]+svmkernel_cm[1,2]+svmkernel_cm[2,1]+svmkernel_cm[2,2])
+```
+Perform model evaluation through k-fold cross validation
+```{r}
+set.seed(5)
+folds = createFolds(y = imputed_dataset$Survived,
+                    k = 10)
+svmlinear_accuracy = lapply(folds, function(x){
+        svmlinear_training_fold = imputed_dataset[-x,]
+        svmlinear_test_fold = imputed_dataset[x,]
+        folds_svmlinear_classifier = svm(formula = Survived ~ .,
+                           data = svmlinear_training_fold,
+                           type = 'C-classification',
+                           kernel = 'linear')
+        folds_svmlinear_y_pred = predict(folds_svmlinear_classifier,
+                         newdata = svmlinear_test_fold[,-7])
+        folds_svmlinear_cm = table(svmlinear_test_fold$Survived, 
+                     folds_svmlinear_y_pred)
+        folds_svmlinear_accuracy = (folds_svmlinear_cm[1,1]+folds_svmlinear_cm[2,2])/(folds_svmlinear_cm[1,1]+folds_svmlinear_cm[1,2]+folds_svmlinear_cm[2,1]+folds_svmlinear_cm[2,2])
+        return(folds_svmlinear_accuracy)
+})
+
+svmkernel_accuracy = lapply(folds, function(x){
+        svmkernel_training_fold = imputed_dataset[-x,]
+        svmkernel_test_fold = imputed_dataset[x,]
+        folds_svmkernel_classifier = svm(formula = Survived ~ .,
+                           data = svmkernel_training_fold,
+                           type = 'C-classification',
+                           kernel = 'radial')
+        folds_svmkernel_y_pred = predict(folds_svmkernel_classifier,
+                         newdata = svmkernel_test_fold[,-7])
+        folds_svmkernel_cm = table(svmkernel_test_fold$Survived, 
+                     folds_svmkernel_y_pred)
+        folds_svmkernel_accuracy = (folds_svmkernel_cm[1,1]+folds_svmkernel_cm[2,2])/(folds_svmkernel_cm[1,1]+folds_svmkernel_cm[1,2]+folds_svmkernel_cm[2,1]+folds_svmkernel_cm[2,2])
+        return(folds_svmkernel_accuracy)
+})
+mean(as.numeric(svmlinear_accuracy))
+mean(as.numeric(svmkernel_accuracy))
+```
+###Conclusion
+SVM Linear classifier has a greater accuracy than the SVM Kernel classifier
