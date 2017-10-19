@@ -27,7 +27,7 @@ library(caTools)
 library(caret)
 ```
 ```{r}
-setwd('D:\\Venkat\\Villanova\\Data Scicence Projects\\Titanic')
+##Set the working directory to the folder location where train and test csv are available
 ```
 Load data -
 ```{r}
